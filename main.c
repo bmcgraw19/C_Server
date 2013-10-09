@@ -5,6 +5,13 @@
  * Copyright 2012 by Gabriel Parmer.
  * Author: Gabriel Parmer, gparmer@gwu.edu, 2012
  */
+/**
+ * Name: Brannon McGraw
+ * email: bmcgraw@gwmail.gwu.edu
+ * 
+ *
+ */
+
 /* 
  * This is a HTTP server.  It accepts connections on port 8080, and
  * serves a local static document.
@@ -29,6 +36,7 @@
 
 #include <util.h> 		/* client_process */
 #include <server.h>		/* server_accept and server_create */
+#include "cas.h"
 
 #define MAX_DATA_SZ 1024
 #define MAX_CONCURRENCY 256
@@ -41,6 +49,7 @@
  * you will want to probably keep all of the functions called in this
  * function, but define different code to use them.
  */
+
 void
 server_single_request(int accept_fd)
 {
@@ -61,12 +70,13 @@ void
 server_multiple_requests(int accept_fd)
 {
   int fd;
-  while(19>0){
+  while(19){
     
     fd = server_accept(accept_fd);
     client_process(fd);    
   }
   return;
+
 }
 
 void
@@ -74,38 +84,197 @@ server_processes(int accept_fd)
 {
   int fd;
   int count = 0;
-  while(count<=MAX_CONCURRENCY){
-    fd = server_accept(accept_fd);
-    int pid;
-    pid = fork();
-    if(pid<0){
-      printf("Unable to fork to child, exiting server.");
-      return;
-    }else if (pid == 0){
+  while(19){
+    
+    if(count<MAX_CONCURRENCY){ //if there are enough resources for a new process
+      printf("Listening for connection...\n");
+      fd = server_accept(accept_fd); //wait on an incoming connection
+      int pid; //create a new process ID
+      count++; //increment the number of process IDs
+      printf("Forking\n");
+      pid = fork();
       
-    }else{
+      if(pid == 0){ //if the child...
+	printf("Processing request...\n");
+	client_process(fd);
+	printf("Closing connection...\n");
+	exit(0);
+      }else if(pid<0) { // if the child failed...
+	printf("Unable to fork to child, exiting server.");
+	return;
+      }else{ //if the parent
+	while( waitpid(-1, NULL, WNOHANG) > 0){
+	  printf("%d\n",count);
+	  count--;
+	}
+      }//end if (which process am i)
       
+    } //end if (how many processes running)
+    else{ //if too many connections,
+      printf("Too many connections, flushing queue\n"); 
+      while( waitpid(-1, NULL, 0) > 0){ 
+	count--;
+      }
     }
-  }
+}//end while (infinite loops don't end though...)
   return;
 }
 
 void
-server_dynamic(int accept_fd)
+server_dynamic(int accept_fd) 
 {
+  accept_fd *= 2;
   return;
 }
+
+void* pthread_handle(void* fd){
+  printf("New thread handling the client\n");
+  client_process((int)fd);
+  printf("Thread exiting\n");
+  pthread_exit(NULL);
+  return (void*)1;
+}
+
 
 void
 server_thread_per(int accept_fd)
 {
+  int i;
+  int fd;
+  int count;
+  pthread_t thread [MAX_CONCURRENCY];
+  while(19){
+    if(count< MAX_CONCURRENCY){
+      fd = server_accept(accept_fd);  
+      if(pthread_create( &thread[count++], NULL, &pthread_handle, (void*)fd )){
+	printf("Could not create thread.. exiting\n");
+	count--;
+      }/* end if (creating thread) */
+    }else{ /* if too many threads open */
+      
+      printf("Waiting on threads to die\n");
+      for(i = 0; i<count; i++){
+	printf("Killing thread %d\n",i);
+	if(pthread_join(thread[i], NULL)){
+	  printf("Error joining thread\n");
+	} /* end if (error in joining */
+      }/*end for (clearing pthread queue) */
+      count = 0;
+
+    } /* end if (too many threads) */
+  } /* end while (server execution) */
+
   return;
 }
+
+
+
+struct request{
+  int fd;
+  struct request* next;
+};
+
+struct request* requests;
+volatile int lock = 0;
+
+struct request* get_request(void){
+  int old_lock, new_lock;
+  struct request* r;
+  do{
+    old_lock = lock;
+    new_lock = lock;
+    new_lock++;
+  }while(__cas( &lock, old_lock, new_lock)  );
+  
+  if(requests){
+    r = requests;
+    
+    if(requests->next){
+      requests = requests->next;
+    }else{
+      requests = NULL;
+    }
+    lock = 0;
+    return r;
+  }else{
+    lock = 0;
+    return NULL;
+  }
+}
+
+void put_request(struct request* r){
+  int old_lock, new_lock;
+  
+  do{
+    old_lock = lock;
+    new_lock = lock;
+    new_lock++;
+  }while(__cas(&lock, old_lock, new_lock));
+  
+  if(requests){
+    r->next = requests;
+  }else{
+    r->next = NULL;
+  }  
+  requests = r;
+  lock = 0;
+}
+
+void worker_handle(void){
+  struct request* r;
+  int fd;
+  while(19){
+    r = get_request();
+    if(r){
+      int old_lock, new_lock;
+      
+      do{
+	old_lock = lock;
+	new_lock = lock;
+	new_lock++;
+      }while(__cas(&lock2, old_lock, new_lock));
+      
+      fd = r->fd;
+      client_process((int)fd);
+      free(r);
+    }
+  }
+  
+}
+
+void master_handle(void* accept_fd){
+  pthread_t worker [MAX_CONCURRENCY];
+  int i;
+  requests = NULL;
+  
+  for(i=0; i<MAX_CONCURRENCY/4;i++){
+    pthread_create(&worker[i], NULL, &worker_handle, (void*)NULL);
+  }
+  
+  struct request* r;
+  int fd;
+  while(19){
+    fd = server_accept((int)accept_fd);
+    
+    
+    r = malloc(sizeof(struct request));
+    r->fd = fd;
+    r->next = NULL;
+    
+    put_request(r);
+  }
+  
+}
+
 
 void
 server_task_queue(int accept_fd)
 {
-  return;
+    pthread_t master;
+    pthread_create(&master, NULL, &master_handle, (void*)accept_fd);
+    while(19){
+    
+    }
 }
 
 void
@@ -181,3 +350,4 @@ main(int argc, char *argv[])
 	
   return 0;
 }
+

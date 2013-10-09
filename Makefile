@@ -1,5 +1,5 @@
 OBJS=server.o simple_http.o content.o main.o util.o
-CFLAGS=-g -I. -Wall -Wextra -lpthread
+CFLAGS=-g -I. -Wall -Wextra -lpthread -pthread
 #DEFINES=-DTHINK_TIME
 BIN=server
 CC=gcc

@@ -1,0 +1,103 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+struct linked_list{
+  struct request* head;
+};
+
+struct request{
+  int fd;
+  struct request* next;
+};
+
+struct linked_list* ll_create(void){
+  struct linked_list* ll = malloc(sizeof(struct linked_list));
+  ll->head = malloc(sizeof(struct request*));
+  if(ll)return ll;
+  return NULL;
+}
+
+void ll_destroy(struct linked_list* ll){
+  while(ll->head){
+    struct request* temp = ll->head;
+    ll->head = temp->next;
+    free(temp);
+  }
+  free(ll);
+  ll = NULL;
+}
+
+void ll_add(struct linked_list* ll, request* req){
+  struct request* temp = ll->head;
+  req->next = temp;
+  ll->head = req;
+}
+
+int ll_length(struct linked_list* ll){
+  int count = 0;
+  
+  struct request* temp = ll->head;
+  /* if(!temp) printf("Nothing here\n"); for testing purposes */
+  while(temp){
+    count++;
+    temp = (temp)->next;
+  }
+  return count;
+}
+
+int ll_remove_first(struct linked_list* ll){
+  if(!ll->head) return NULL;
+  struct request* temp = ll->head;
+  ll->head = temp->next;
+  int pop = temp->fd;
+  free(temp);
+  return pop;
+}
+
+int ll_remove(struct linked_list *ll, int value){
+  struct request* temp = ll->head;
+  if(temp->fd == value){
+    ll->head = temp->next;
+    free(temp);
+    return 0;
+  }
+  while(temp->next){
+   
+      if( (temp->next)->fd == value){
+      struct request* deleted = temp->next;
+      temp->next = (temp->next)->next;
+      free(deleted);
+      return 0;
+      }
+      
+      temp = temp->next;
+   
+  }
+  return -1;
+}
+
+int ll_contains(struct linked_list *ll, int value){
+  struct request* temp = ll->head;
+  int count = 1;
+  while(temp){
+    if(temp->fd == value) return count;
+    temp = temp->next;
+    count++;
+  }
+  return 0;
+}
+
+/* not part of the API, but used for my own tests */
+void ll_print(struct linked_list *ll){
+  printf("Current list: \n");
+  
+  if(!ll->head){
+    printf("Empty\n");
+    return;
+  }
+  struct request* temp = ll->head;
+  while(temp){
+    printf("%d\n", (int)(temp->fd));
+    temp = temp->next;
+  }
+}

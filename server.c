@@ -41,7 +41,7 @@ server_create(short int port)
 		return -1;
 	}
 	listen(fd, 10);
-
+	
 	return fd;
 }
 
